@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-app
+spec:
+  replicas: 3  # Используем три пода, т.к. этого достаточно для текущей нагрузки
+  selector:
+    matchLabels:
+      app: web-app
+  template:
+    metadata:
+      labels:
+        app: web-app
+    spec:
+      containers:
+      - name: web-app-container
+        image: app-image:latest  # Образ приложения
+        ports:
+        - containerPort: 80  # Порт, на котором работает приложение
+
+        # Ограничиваем потребление ресурсов
+        resources:
+          requests:
+            memory: "128Mi"  # Запрашиваем ровно 128Мб для стабильной работы
+            cpu: "100m"  # 0.1 CPU для стабильной работы
+          limits:
+            memory: "256Mi"  # Допускаем использование до 256Мб памяти
+            cpu: "500m"  # 0.5 CPU для интенсивной работы при старте
+
+        # Liveness Probe для проверки, что под не упал
+        livenessProbe:
+          httpGet:
+            path: /healthz  # Эндпоинт для проверки здоровья приложения
+            port: 80
+          initialDelaySeconds: 10  # Через сколько секунд после старта проверить здоровье
+          periodSeconds: 10  # Проверка здоровья каждые 10 секунд
+
+        # Readiness Probe для проверки готовности к обработке запросов
+        readinessProbe:
+          httpGet:
+            path: /ready  # Эндпоинт для проверки готовности приложения
+            port: 80
+          initialDelaySeconds: 15  # Время до начала проверки готовности
+          periodSeconds: 5  # Периодичность проверки готовности
+
+        # Таймаут инициализации
+        startupProbe:
+          httpGet:
+            path: /startup  # Эндпоинт для проверки инициализации
+            port: 80
+          failureThreshold: 3  # Сколько неудачных проверок до перезапуска контейнера
+          periodSeconds: 5  # Как часто проверять, что под готов
+
+      # Антиаффинность для распределения подов по разным нодам
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - web-app
+              topologyKey: "kubernetes.io/hostname"  # Обеспечиваем размещение на разных хостах
